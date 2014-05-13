@@ -57,18 +57,18 @@ int main ( int argc, char *argv[] )
 		     	if (event->len) {
 		     		 if (event->mask & IN_CREATE) {
 		      		 	if (event->mask & IN_ISDIR) {
-		          			printf( "syncbox: directory %s created.\n", event->name );
+		          			printf("syncbox: directory %s created.\n", event->name );
 		        		}
 		        		else {
-		          			printf( "syncbox: file %s created.\n", event->name );
+		          			printf("syncbox: file %s created.\n", event->name );
 		       			}
 		      		}
 		     	 	else if ( event->mask & IN_DELETE ) {
 		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf( "syncbox: directory %s deleted.\n", event->name );
+		         		 	printf("syncbox: directory %s deleted.\n", event->name );
 		        		}
 		        		else {
-		          			printf( "syncbox: file %s deleted.\n", event->name );
+		          			printf("syncbox: file %s deleted.\n", event->name );
 		        		}
 		      		}
 		      		else if ( event->mask & IN_CLOSE_WRITE ) {
