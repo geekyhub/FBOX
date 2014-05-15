@@ -1,9 +1,3 @@
-/*320202
-Tinashe Matate
-OPERATING SYSTEMS ASSIGNMENT
-tmatate@jacobs-university.de
-*/
-
 #include <sys/wait.h>
 #include <sys/inotify.h>
 #include <stdio.h>
