@@ -1,3 +1,10 @@
+/*320202
+Tinashe Matate
+OPERATING SYSTEMS ASSIGNMENT
+tmatate@jacobs-university.de
+*/
+
+#include <sys/wait.h>
 #include <sys/inotify.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -11,140 +18,161 @@
 #define EVENT_SIZE  (sizeof(struct inotify_event))
 #define BUFFER_SIZE (1024*( EVENT_SIZE + 16 ))
 
-int main ( int argc, char *argv[] )
-{
-	int pfd;
-	int READ;
-	char buf[BUFFER_SIZE];
-	int watch;
-	int i = 0;
-	int status;
+typedef struct inotify_event* event;
+/*finds out what event took place */
+void processEvent(event e, char* eventType);
+/*implements the select function to wait for events to read*/
+int my_select(int fd,int mytime);
+/*prints event respective of what is affected,directory or file*/
+void printEvent(event e, char* eventType);
+void usage(int argc);
 
-	if(argc != 4){
-		printf("usage [./syncbox] [-t seconds] [-v] [-n] src dst\n");
-		return EXIT_FAILURE;
+
+int main ( int argc, char *argv[] ) {
+
+	char buf[BUFFER_SIZE];
+	int pfd,ii,READ,watch,status,VERBOSE = 0,DRY_RUN = 0;
+	const char *pathname;
+	const char *pcopy;
+	usage(argc);
+	for (ii = 0;ii < argc; ii++){
+		if(strcmp(argv[ii],"-v") == 0){
+			VERBOSE = 1;
+		}
+
+		if(strcmp(argv[ii],"-n") == 0){
+			DRY_RUN = 1;
+		}
+
 	}
-	
-	pfd = inotify_init();/*creating the INOTIFY instance*/
+	if (VERBOSE == 1  && DRY_RUN == 1){
+		pathname = argv[5];
+		pcopy = argv[6];
+	}else if((!VERBOSE && DRY_RUN) || (VERBOSE && !DRY_RUN)){
+		pathname = argv[4];
+		pcopy = argv[5];
+	} else{
+		usage(argc);
+	}
+	/*creating the INOTIFY instance*/
+	pfd = inotify_init();
 	if (pfd == -1){
 		perror("inotify_init");
 	}
 
-	const char *pathname = argv[2];
-	const char *pcopy = argv[3];
-	watch = inotify_add_watch(pfd, pathname, IN_ALL_EVENTS);//listing changes to directory/file
-	if (watch == -1){
-		perror("inotify_add_watch");
-	}
+	int timeset = atoi(argv[2]);
+	//listing changes to directory/file
+	watch = inotify_add_watch(pfd, pathname,IN_ALL_EVENTS);
+	if(VERBOSE)
+		printf("syncbox: added watch for %s\n",pathname);
+	while(my_select(pfd,timeset) != -1) {
+		READ = read(pfd,buf,BUFFER_SIZE);
+		int i = 0;
+		while (i < READ) {
+	    	struct inotify_event *event = ( struct inotify_event * ) &buf[i];
+	     	if (event->len) {
+	     		if (event->mask & IN_CREATE) {
+	     		 	processEvent(event, "created");
+	      		}
+	     	 	else if ( event->mask & IN_DELETE ) {
+	     		 	processEvent(event, "deleted-exiting");
+	     		 	inotify_rm_watch(pfd,watch);
+					close(pfd);
+					exit(1);
 
-	int pid = fork();
-	if (pid < 0){
-		perror("fork");
-	}
-	else if(pid == 0){
-		printf("syncbox: added watch for %s\n",pathname );
-		printf("syncbox: synchronising %s to %s.\n",pathname,pcopy);
-		printf("syncbox: rsync -az --delete %s %s.\nsyncbox: synchronization finished.\n",pathname,pcopy);
-		execl("/usr/bin/rsync","rsync","-az","--delete",pathname,pcopy,(char*)NULL);
-		perror("execl");
-	
-	}else if(pid > 0){		          			printf( "TEST");
-
-		waitpid(pid,&status,0);
-		while(READ = read(pfd,buf,BUFFER_SIZE ) >=0){
-			while ( i < READ) {
-		    	struct inotify_event *event = ( struct inotify_event * ) &buf[i];
-		     	if (event->len) {
-		     		 if (event->mask & IN_CREATE) {
-		      		 	if (event->mask & IN_ISDIR) {
-		          			printf("syncbox: directory %s created.\n", event->name );
-		        		}
-		        		else {
-		          			printf("syncbox: file %s created.\n", event->name );
-		       			}
-		      		}
-		     	 	else if ( event->mask & IN_DELETE ) {
-		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf("syncbox: directory %s deleted.\n", event->name );
-		        		}
-		        		else {
-		          			printf("syncbox: file %s deleted.\n", event->name );
-		        		}
-		      		}
-		      		else if ( event->mask & IN_CLOSE_WRITE ) {
-		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf("syncbox: directory %s opened for writing is closed.\n", event->name );
-		        		}
-		        		else {
-		          			printf("syncbox: file %s opened for writing is closed.\n", event->name );
-		        		}
-		      		}
-		      		else if ( event->mask & IN_CLOSE_NOWRITE ) {
-		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf("syncbox: directory %s opened not for writing is closed\n", event->name );
-		        		}
-		        		else {
-		          			printf("syncbox: file %s opened not for writing is closed.\n", event->name );
-		        		}
-		      		}
-		      		else if ( event->mask & IN_DELETE_SELF ) {
-		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf("syncbox: directory %s monitored is deleted-exiting\n", event->name );
-		         		 	exit(1);
-
-		        		}
-		        		else {
-		          			printf("syncbox: file %s monitored is deleted-exiting.\n", event->name );
-		          			exit(2);
-		        		}
-		      		}
-		      		else if ( event->mask & IN_MODIFY ) {
-		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf("syncbox: directory %s was modified\n", event->name );
-		        		}
-		        		else {
-		          			printf("syncbox: file %s was modified.\n", event->name );
-		        		}
-		      		}
-		      		else if ( event->mask & IN_MOVE_SELF) {
-		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf("syncbox: watched directory %s was itself moved\n", event->name );
-		        		}
-		        		else {
-		          			printf("syncbox: watched file %s was itself moved.\n", event->name );
-		        		}
-		      		}
-		      		else if ( event->mask & IN_MOVED_FROM || event->mask & IN_MOVED_TO) {
-		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf("syncbox: directory %s moved/renamed\n", event->name );
-		        		}
-		        		else {
-		          			printf("syncbox: file %s moved/renamed.\n", event->name );
-		        		}
-		      		}
-		      		else if ( event->mask & IN_OPEN) {
-		        		if ( event->mask & IN_ISDIR ) {
-		         		 	printf("syncbox: directory %s was opened\n", event->name );
-		        		}
-		        		else {
-		          			printf("syncbox: file %s was opened.\n", event->name );
-		        		}
-		      		}
-		      		
-
-		    	}
-
-		    i += EVENT_SIZE + event->len;
-		  }
-		  
+	      		}
+	      		else if ( event->mask & IN_CLOSE_WRITE ) {
+	      			processEvent(event, "opened for writing is closed");
+	      		}
+	      		else if ( event->mask & IN_CLOSE_NOWRITE ) {
+	      			processEvent(event, "opened not for writing is closed");
+	      		}
+	      		else if ( event->mask & IN_DELETE_SELF ) {
+	      			processEvent(event, "monitored is deleted-exiting");
+	      			inotify_rm_watch(pfd,watch);
+					close(pfd);
+	      			exit(1);
+	      		}
+	      		else if ( event->mask & IN_MODIFY ) {
+	      			processEvent(event, "was modified");
+	      		}
+	      		else if ( event->mask & IN_MOVE_SELF) {
+	      			processEvent(event, "was itself moved");
+	      		}
+	      		else if ( event->mask & IN_MOVED_FROM || event->mask & IN_MOVED_TO) {
+	      			processEvent(event, "moved/renamed");
+	      		}
+	      		else if ( event->mask & IN_OPEN) {
+	      			processEvent(event, "was opened");
+	      		}
+	      				      		
+	    	}
+		   
+			i += EVENT_SIZE + event->len;
 		}
-		
-	}
 
-		inotify_rm_watch(pfd,watch);
-		close(pfd);
+	}
+	int pid = fork();
+			if (pid < 0) {
+				perror("fork");
+			}
+			else if(pid == 0){
+				if (VERBOSE && DRY_RUN==0) {
+					printf("syncbox: synchronising %s to %s.\n",pathname,pcopy);
+					execl("/usr/bin/rsync","rsync","-az","--delete",pathname,pcopy,(char*)NULL);
+					perror("execl");
+				}
+				else if(VERBOSE && DRY_RUN){
+					printf("syncbox: DRY_RUN-no synchronization took place\n");
+				}
+							
+			}
+			else {		    
+				waitpid(pid, &status, 0);
+				if (VERBOSE && DRY_RUN == 0) {
+					printf("syncbox: rsync -az --delete %s %s.\nsyncbox: synchronization finished.\n",pathname,pcopy);
+				}
+			}
+
+	inotify_rm_watch(pfd,watch);
+	close(pfd);
 	return 0;
 }
+
+void processEvent(event e, char* eventType) {
+	printEvent(e, eventType);
+}
+int my_select(int fd,int mytime) {
+	fd_set fds;
+	FD_ZERO(&fds);
+	FD_SET(fd, &fds);
+	struct timeval timeout;
+	timeout.tv_sec = mytime;
+	timeout.tv_usec = 0;
+	select(fd+1, &fds, NULL, NULL, &timeout);
+	if (FD_ISSET(fd, &fds)) {
+		return fd;
+	}
+	return -1;
+}
+
+void printEvent(event e, char* eventType) {
+	if (e->mask & IN_ISDIR) {
+		printf("syncbox: directory %s %s.\n", e->name, eventType);
+	}
+	else {
+		printf("syncbox: file %s %s.\n", e->name, eventType);
+	}
+}
+
+void usage(int argc) {
+	if(argc == 7 || argc == 6 ||argc == 5){
+	}else{
+		printf("\nusage [./syncbox] [-t seconds] [-v](optional) [-n](optional) src dst\n");
+		exit(1);
+	}
+}
+
 
 
 
